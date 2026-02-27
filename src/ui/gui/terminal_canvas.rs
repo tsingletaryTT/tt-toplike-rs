@@ -77,7 +77,8 @@ impl canvas::Program<()> for TerminalCanvas {
         let cell_size = actual_cell_width.min(actual_cell_height);
 
         // Font size is slightly smaller than cell height for padding
-        let font_size = (cell_size * 0.85) as u16;
+        // iced 0.14+ requires f32 for Pixels::from()
+        let font_size = cell_size * 0.85;
 
         // Render each character
         for (row, col, cell) in self.grid.iter_cells() {

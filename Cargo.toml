@@ -23,20 +23,24 @@ name = "tt_toplike_rs"
 path = "src/lib.rs"
 
 [dependencies]
-# Tenstorrent hardware access (PRIMARY - using all-smi maintained fork)
+# Tenstorrent hardware access (OPTIONAL - invasive, requires explicit --backend luwen)
+# WARNING: Luwen backend requires direct PCI BAR0 access and may interfere with running workloads
+# Only use with --backend luwen flag, never in auto-detect mode
 all-smi-luwen-core = { version = "0.2.0", optional = true }  # Luwen core types
 all-smi-luwen-if = { version = "0.7.9", optional = true }  # Luwen interface library
 all-smi-luwen-ref = { version = "0.7.9", optional = true }  # Reference PCI communication
 
 # TUI framework (optional - only needed for TUI frontend)
-ratatui = { version = "0.28", default-features = true, optional = true }
-crossterm = { version = "0.28", features = ["event-stream"], optional = true }
+ratatui = { version = "0.30", default-features = true, optional = true }
+crossterm = { version = "0.29", features = ["event-stream"], optional = true }
 
 # GUI framework (optional - only needed for GUI frontend)
+# NOTE: Staying on 0.13 for now - 0.14 has breaking API changes (application builder)
+# TODO: Migrate to iced 0.14 API when time permits
 iced = { version = "0.13", features = ["canvas", "tokio"], optional = true }
 
 # Async runtime
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 tokio-util = "0.7"
 
 # JSON parsing (for JSON backend fallback)
@@ -47,7 +51,7 @@ serde_json = "1.0"
 clap = { version = "4.5", features = ["derive", "cargo"] }
 
 # System monitoring
-sysinfo = "0.32"
+sysinfo = "0.38"
 procfs = { version = "0.17", optional = true }  # Linux-specific
 
 # Error handling
@@ -74,13 +78,18 @@ pretty_assertions = "1.4"
 tempfile = "3.13"
 
 [features]
-default = ["tui", "json-backend", "luwen-backend", "linux-procfs"]
+# Default features: Safe, non-invasive backends only
+# Luwen backend excluded from default to prevent hardware disruption
+default = ["tui", "json-backend", "linux-procfs"]
 
 # Frontend features
 tui = ["ratatui", "crossterm"]  # Terminal UI with Ratatui
 gui = ["iced"]                  # Native GUI with iced
 
 # Backend features
-luwen-backend = ["all-smi-luwen-core", "all-smi-luwen-if", "all-smi-luwen-ref"]   # Direct hardware access (PRIMARY)
-json-backend = []               # Subprocess tt-smi + JSON (FALLBACK)
+# IMPORTANT: luwen-backend is OPTIONAL and must be explicitly enabled
+# It requires direct PCI access and may disrupt running workloads
+# Only use with explicit --backend luwen flag
+luwen-backend = ["all-smi-luwen-core", "all-smi-luwen-if", "all-smi-luwen-ref"]   # Direct hardware access (EXPLICIT ONLY)
+json-backend = []               # Subprocess tt-smi + JSON (SAFE)
 linux-procfs = ["procfs"]       # Enhanced Linux process detection

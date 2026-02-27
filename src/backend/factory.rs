@@ -77,39 +77,35 @@ pub fn create_backend(
 }
 
 /// Auto-detect backend (tries backends in order until one succeeds)
+///
+/// SAFE MODE: Never tries Luwen backend (invasive, requires PCI BAR0 access)
+/// Order: Sysfs (hwmon) → JSON (tt-smi) → Mock
+/// Use --backend luwen explicitly if you need direct hardware access
 fn create_auto_backend(config: BackendConfig, cli: &Cli) -> BackendResult<Box<dyn TelemetryBackend>> {
-    // Try Luwen first (best performance, direct hardware)
-    #[cfg(feature = "luwen-backend")]
-    {
-        log::info!("Trying Luwen backend...");
-        if let Ok(backend) = create_backend(BackendType::Luwen, config.clone(), cli) {
-            log::info!("Luwen backend initialized successfully");
-            return Ok(backend);
-        }
-        log::warn!("Luwen backend failed, trying JSON backend");
-    }
+    log::info!("Auto-detecting backend (safe mode - skipping Luwen)...");
 
-    // Try JSON backend (tt-smi subprocess)
-    log::info!("Trying JSON backend...");
-    if let Ok(backend) = create_backend(BackendType::Json, config.clone(), cli) {
-        log::info!("JSON backend initialized successfully");
-        return Ok(backend);
-    }
-    log::warn!("JSON backend failed, trying Sysfs backend");
-
-    // Try Sysfs backend (hwmon sensors)
+    // Try Sysfs backend first (hwmon sensors - SAFEST, non-invasive)
     #[cfg(target_os = "linux")]
     {
-        log::info!("Trying Sysfs backend (hwmon sensors)...");
+        log::info!("Trying Sysfs backend (hwmon sensors - safest, non-invasive)...");
         if let Ok(backend) = create_backend(BackendType::Sysfs, config.clone(), cli) {
             log::info!("Sysfs backend initialized successfully");
             return Ok(backend);
         }
-        log::warn!("Sysfs backend failed, falling back to mock");
+        log::warn!("Sysfs backend failed, trying JSON backend");
     }
 
+    // Try JSON backend (tt-smi subprocess - safe)
+    log::info!("Trying JSON backend (tt-smi subprocess)...");
+    if let Ok(backend) = create_backend(BackendType::Json, config.clone(), cli) {
+        log::info!("JSON backend initialized successfully");
+        return Ok(backend);
+    }
+    log::warn!("JSON backend failed, falling back to mock");
+
     // Fallback to mock backend (always succeeds)
-    log::info!("Falling back to mock backend");
+    log::info!("No hardware backends available, using mock backend");
+    log::info!("Tip: Use --backend luwen for direct hardware access (requires PCI permissions)");
     let mut backend = MockBackend::with_config(cli.mock_devices, config);
     backend.init()?;
     Ok(Box::new(backend))

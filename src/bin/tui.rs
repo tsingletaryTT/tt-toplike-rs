@@ -66,38 +66,31 @@ fn main() {
             run_with_backend(&mut backend, &cli);
         }
         BackendType::Auto => {
-            // Try Luwen first (direct hardware), then JSON (subprocess), then Mock (no hardware)
-            log::info!("Auto-detecting backend...");
+            // SAFE MODE AUTO-DETECT: Never tries Luwen (invasive, requires PCI access)
+            // Order: Sysfs (hwmon) → JSON (tt-smi) → Mock
+            // Use --backend luwen explicitly if you need direct hardware access
+            log::info!("Auto-detecting backend (safe mode - skipping Luwen)...");
 
-            #[cfg(feature = "luwen-backend")]
+            // Try Sysfs backend first (Linux hwmon sensors - SAFEST, non-invasive)
+            #[cfg(target_os = "linux")]
             {
-                println!("🔍 Trying Luwen backend (direct hardware access)...");
+                println!("🔍 Trying Sysfs backend (hwmon sensors - safest, non-invasive)...");
+                let mut sysfs_backend = tt_toplike_rs::backend::sysfs::SysfsBackend::with_config(config.clone());
 
-                // Use catch_unwind to handle panics from the luwen library
-                // The all-smi-ttkmd-if library panics on BAR0 mapping failures
-                let luwen_result = std::panic::catch_unwind(|| {
-                    let mut luwen_backend = LuwenBackend::with_config(config.clone());
-                    luwen_backend.init().map(|_| luwen_backend)
-                });
-
-                match luwen_result {
-                    Ok(Ok(mut backend)) => {
-                        println!("✓ Luwen backend initialized successfully");
-                        run_with_backend(&mut backend, &cli);
+                match sysfs_backend.init() {
+                    Ok(_) => {
+                        println!("✓ Sysfs backend initialized successfully");
+                        run_with_backend(&mut sysfs_backend, &cli);
                         return;
                     }
-                    Ok(Err(e)) => {
-                        log::warn!("Luwen backend failed: {}", e);
-                        println!("⚠ Luwen backend unavailable, trying JSON backend...");
-                    }
-                    Err(_) => {
-                        log::warn!("Luwen backend panicked (likely hardware access issue)");
-                        println!("⚠ Luwen backend panicked (likely hardware access issue), trying JSON backend...");
+                    Err(e) => {
+                        log::warn!("Sysfs backend failed: {}", e);
+                        println!("⚠ Sysfs backend unavailable, trying JSON backend...");
                     }
                 }
             }
 
-            // Try JSON backend as fallback
+            // Try JSON backend as second option (tt-smi subprocess - safe)
             println!("🔍 Trying JSON backend (tt-smi subprocess)...");
             let mut json_backend = JSONBackend::with_config(
                 cli.tt_smi_path.to_string_lossy().to_string(),
@@ -112,30 +105,13 @@ fn main() {
                 }
                 Err(e) => {
                     log::warn!("JSON backend failed: {}", e);
-                    println!("⚠ JSON backend unavailable, trying sysfs...");
+                    println!("⚠ JSON backend unavailable, falling back to mock...");
                 }
             }
 
-            // Try Sysfs backend (Linux hwmon sensors - non-invasive)
-            #[cfg(target_os = "linux")]
-            {
-                println!("🔍 Trying Sysfs backend (hwmon sensors)...");
-                let mut sysfs_backend = tt_toplike_rs::backend::sysfs::SysfsBackend::with_config(config.clone());
-
-                match sysfs_backend.init() {
-                    Ok(_) => {
-                        println!("✓ Sysfs backend initialized successfully");
-                        run_with_backend(&mut sysfs_backend, &cli);
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!("Sysfs backend failed: {}", e);
-                        println!("⚠ Sysfs backend unavailable, falling back to mock...");
-                    }
-                }
-            }
-
-            // Last resort: Mock backend
+            // Last resort: Mock backend (for testing without hardware)
+            println!("⚠ No hardware backends available, using mock backend");
+            println!("💡 Tip: Use --backend luwen for direct hardware access (requires PCI permissions)");
             let mut mock_backend = MockBackend::with_config(cli.mock_devices, config);
             run_with_backend(&mut mock_backend, &cli);
         }

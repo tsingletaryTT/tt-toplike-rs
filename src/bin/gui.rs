@@ -610,40 +610,27 @@ fn create_backend(cli: &Cli) -> Box<dyn TelemetryBackend> {
             ))
         }
         BackendType::Auto => {
-            // Try backends in order: Luwen → JSON → Mock
-            #[cfg(feature = "luwen-backend")]
+            // SAFE MODE AUTO-DETECT: Never tries Luwen (invasive, requires PCI access)
+            // Order: Sysfs (hwmon) → JSON (tt-smi) → Mock
+            // Use --backend luwen explicitly if you need direct hardware access
+            log::info!("Auto-detecting backend (safe mode - skipping Luwen)...");
+
+            // Try Sysfs backend first (Linux hwmon sensors - SAFEST, non-invasive)
+            #[cfg(target_os = "linux")]
             {
-                log::info!("Trying Luwen backend...");
+                log::info!("Trying Sysfs backend (hwmon sensors - safest, non-invasive)...");
+                let mut sysfs_backend = tt_toplike_rs::backend::sysfs::SysfsBackend::with_config(config.clone());
 
-                // Use catch_unwind to handle panics from the luwen library
-                // The all-smi-ttkmd-if library panics on BAR0 mapping failures
-                // instead of returning errors, so we need to catch these panics
-                let luwen_result = std::panic::catch_unwind(|| {
-                    let mut luwen_backend = LuwenBackend::with_config(config.clone());
-                    match luwen_backend.init() {
-                        Ok(_) => Some(luwen_backend),
-                        Err(e) => {
-                            log::warn!("Luwen backend init failed: {}", e);
-                            None
-                        }
-                    }
-                });
-
-                match luwen_result {
-                    Ok(Some(backend)) => {
-                        log::info!("Luwen backend initialized successfully");
-                        return Box::new(backend);
-                    }
-                    Ok(None) => {
-                        log::warn!("Luwen backend initialization failed, trying JSON backend");
-                    }
-                    Err(_) => {
-                        log::warn!("Luwen backend panicked (likely hardware access issue), trying JSON backend");
-                    }
+                if sysfs_backend.init().is_ok() {
+                    log::info!("Sysfs backend initialized successfully");
+                    return Box::new(sysfs_backend);
+                } else {
+                    log::warn!("Sysfs backend failed, trying JSON backend");
                 }
             }
 
-            log::info!("Trying JSON backend...");
+            // Try JSON backend as second option (tt-smi subprocess - safe)
+            log::info!("Trying JSON backend (tt-smi subprocess)...");
             let mut json_backend = JSONBackend::with_config(
                 cli.tt_smi_path.to_string_lossy().to_string(),
                 config.clone(),
@@ -654,22 +641,9 @@ fn create_backend(cli: &Cli) -> Box<dyn TelemetryBackend> {
                 return Box::new(json_backend);
             }
 
-            // Try Sysfs backend (Linux hwmon sensors - non-invasive)
-            #[cfg(target_os = "linux")]
-            {
-                log::info!("Trying Sysfs backend (hwmon sensors)...");
-                let mut sysfs_backend = tt_toplike_rs::backend::sysfs::SysfsBackend::with_config(config.clone());
-
-                if sysfs_backend.init().is_ok() {
-                    log::info!("Sysfs backend initialized successfully");
-                    return Box::new(sysfs_backend);
-                } else {
-                    log::warn!("Sysfs backend failed, falling back to mock");
-                }
-            }
-
-            // Last resort: Mock backend
-            log::warn!("All backends failed, using mock");
+            // Last resort: Mock backend (for testing without hardware)
+            log::warn!("No hardware backends available, using mock backend");
+            log::info!("Tip: Use --backend luwen for direct hardware access (requires PCI permissions)");
             Box::new(MockBackend::with_config(cli.mock_devices, config))
         }
         BackendType::Sysfs => {
