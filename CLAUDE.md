@@ -311,58 +311,48 @@ $ cargo build --bin tt-toplike-tui --features tui
 5. ✅ **Performance**: Maintains 10 FPS with 600 particles and trails
 6. ✅ **Code Quality**: Cleaner architecture with unified canvas rendering
 
-### Border Alignment Fix (March 18, 2026 - Later)
+### Border Alignment - Final Solution (March 18, 2026)
 
-**Problem**: Header and footer text extended beyond separator borders, breaking visual alignment (see ~/Pictures/castle-issue.png, still-off.png).
+**Problem**: Complex emoji width calculations caused alignment issues. Multiple attempts with Unicode range detection proved fragile and error-prone.
 
-**Root Causes**:
-1. Incorrect emoji width detection - characters like ⚡ (U+26A1) and ⚙ (U+2699) were counted as 1 column instead of 2
-2. Missing left padding - canvas content had `"  "` prefix but header/separator didn't
-3. Inconsistent width calculations across components
+**User Insight**: "choose an approach that gets a similar result without the calculations -- something that looks good whether its right wrong inside out or void"
 
-**Solution - Three-Part Fix**:
+**Solution - Radical Simplification**:
 
-**1. Enhanced Unicode Width Detection**:
+Removed all width calculation logic entirely. Now using natural content width with simple visual separator:
+
 ```rust
-fn calculate_span_width(spans: &[Span]) -> usize {
-    spans.iter().map(|span| {
-        span.content.chars().map(|c| {
-            let code = c as u32;
-            // Wide characters: emoji, symbols
-            if (0x1F300..=0x1F9FF).contains(&code)   // Emoji blocks
-                || (0x2600..=0x26FF).contains(&code)  // Misc symbols (⚡⚙☼※)
-                || (0x2700..=0x27BF).contains(&code)  // Dingbats
-                || code == 0x25C6  // ◆
-                || code == 0x25CB  // ○
-                || code == 0x25CF  // ●
-                // ... more cases
-            { 2 } else { 1 }
-        }).sum::<usize>()
-    }).sum()
+// Header: natural content width with 2-space padding
+fn render_header() -> Line {
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(" 🏰 MEMORY DUNGEON ", ...),
+        // ... rest of header content naturally
+    ])
+}
+
+// Separator: simple fixed-length line, no alignment attempts
+fn render_separator() -> Line {
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled("─".repeat(100), ...),  // Just looks good
+    ])
+}
+
+// Footer: natural content width with 2-space padding
+fn render_footer() -> Line {
+    Line::from(vec![
+        Span::raw("  "),
+        // ... footer content naturally
+    ])
 }
 ```
 
-**2. Consistent Left Padding**:
-- Header: Added `spans.push(Span::raw("  "))` at start
-- Separator: Changed to `vec![Span::raw("  "), Span::styled("═".repeat(...))]`
-- Footer: Already had padding (kept)
-
-**3. Adjusted Width Calculations**:
-```rust
-let max_width = self.width.min(120);
-let content_width = max_width.saturating_sub(2);  // Account for left padding
-
-// In header/footer:
-let current_width = Self::calculate_span_width(&spans) - 2;  // Subtract initial "  "
-if current_width < content_width {
-    spans.push(Span::raw(" ".repeat(content_width - current_width)));
-}
-```
-
-**Result**: ✅ Perfect border alignment - all elements now:
-- Start with 2-space left padding
-- Use consistent width calculations (118 content + 2 padding = 120 total)
-- Properly measure emoji/Unicode characters
+**Result**: ✅ Visually pleasing display without mathematical perfection
+- All elements share 2-space left padding
+- Separator uses subtle `─` instead of bold `═`
+- No complex calculations or emoji width detection
+- **Sometimes simple is better!**
 
 ---
 
