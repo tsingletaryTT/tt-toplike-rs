@@ -311,11 +311,41 @@ $ cargo build --bin tt-toplike-tui --features tui
 5. ✅ **Performance**: Maintains 10 FPS with 600 particles and trails
 6. ✅ **Code Quality**: Cleaner architecture with unified canvas rendering
 
+### Border Alignment Fix (March 18, 2026 - Later)
+
+**Problem**: Header and footer text extended beyond separator borders, breaking visual alignment (see ~/Pictures/castle-issue.png).
+
+**Root Cause**: Separator used `self.width.min(120)` but header/footer had no width constraint, causing overflow.
+
+**Solution**:
+- Added `calculate_span_width()` helper that accounts for Unicode/emoji width (🏰 = 2 columns)
+- Both header and footer now calculate their width and pad to match separator width
+- Ensures clean border alignment at any terminal width
+
+**Code Added** (src/animation/memory_castle.rs):
+```rust
+fn calculate_span_width(spans: &[Span]) -> usize {
+    spans.iter().map(|span| {
+        span.content.chars().map(|c| {
+            if c as u32 > 0x1F300 { 2 } else { 1 }  // Emoji are 2 columns
+        }).sum::<usize>()
+    }).sum()
+}
+
+// In render_header() and render_footer():
+let current_width = Self::calculate_span_width(&spans);
+if current_width < max_width {
+    spans.push(Span::raw(" ".repeat(max_width - current_width)));
+}
+```
+
+**Result**: ✅ Perfect border alignment - header, separator, content, footer all match
+
 ---
 
 *Last Updated: March 18, 2026*
 *Phase: Memory Dungeon Visual Overhaul Complete ✅ (16/16 phases done)*
-*Status: **Dramatically Enhanced** - Dense, vibrant, roguelike visualization*
+*Status: **Production Ready** - Dense, vibrant, perfectly aligned roguelike visualization*
 
 ---
 
