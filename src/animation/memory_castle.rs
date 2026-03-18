@@ -458,36 +458,6 @@ impl MemoryCastle {
         }
     }
 
-    /// Calculate display width of spans (accounting for Unicode/emoji width)
-    fn calculate_span_width(spans: &[Span]) -> usize {
-        spans.iter().map(|span| {
-            // Count actual display width (emoji and special chars are often 2 columns)
-            span.content.chars().map(|c| {
-                let code = c as u32;
-                // Wide characters: emoji, symbols, box drawing with special properties
-                if (0x1F300..=0x1F9FF).contains(&code)   // Emoji blocks
-                    || (0x2600..=0x26FF).contains(&code)  // Misc symbols (⚡⚙☼※)
-                    || (0x2700..=0x27BF).contains(&code)  // Dingbats
-                    || (0x1F000..=0x1F02F).contains(&code) // Mahjong/Domino
-                    || (0x1F0A0..=0x1F0FF).contains(&code) // Playing cards
-                    || code == 0x2022  // Bullet •
-                    || code == 0x25C6  // Diamond ◆
-                    || code == 0x25C7  // Diamond ◇
-                    || code == 0x25A0  // Black square ■
-                    || code == 0x25A1  // White square □
-                    || code == 0x25CB  // Circle ○
-                    || code == 0x25CF  // Black circle ●
-                    || code == 0x25C9  // Fisheye ◉
-                    || code == 0x2B24  // Black large circle ⬤
-                {
-                    2
-                } else {
-                    1
-                }
-            }).sum::<usize>()
-        }).sum()
-    }
-
     /// Render header with device info
     fn render_header(
         &self,
@@ -497,11 +467,7 @@ impl MemoryCastle {
     ) -> Line<'static> {
         let mut spans = Vec::new();
 
-        // Start with 2-space padding to match canvas content
         spans.push(Span::raw("  "));
-
-        let max_width = self.width.min(120);
-        let content_width = max_width.saturating_sub(2);  // Account for left padding
 
         // Title
         spans.push(Span::styled(
@@ -571,35 +537,24 @@ impl MemoryCastle {
         // Particle count
         spans.push(Span::raw(format!(" │ Particles: {} ", self.particles.len())));
 
-        // Calculate current width (excluding initial padding) and add right padding
-        let current_width = Self::calculate_span_width(&spans) - 2;  // Subtract the initial "  "
-        if current_width < content_width {
-            let padding = " ".repeat(content_width - current_width);
-            spans.push(Span::raw(padding));
-        }
-
         Line::from(spans)
     }
 
-    /// Render separator line
+    /// Render separator line - just a nice visual break, no exact alignment needed
     fn render_separator(&self) -> Line<'static> {
-        let max_width = self.width.min(120);
-        let content_width = max_width.saturating_sub(2);  // Account for left padding
-
         Line::from(vec![
-            Span::raw("  "),  // Left padding to match canvas content
+            Span::raw("  "),
             Span::styled(
-                "═".repeat(content_width),
-                Style::default().fg(Color::Rgb(100, 100, 120)),
+                "─".repeat(100),  // Simple, looks good at any width
+                Style::default().fg(Color::Rgb(80, 80, 100)),
             ),
         ])
     }
 
-
     /// Render footer with legend
     fn render_footer(&self) -> Line<'static> {
-        let mut spans = vec![
-            Span::raw("  "),  // Left padding to match canvas content
+        Line::from(vec![
+            Span::raw("  "),
             Span::styled("Particles: ", Style::default().fg(Color::Rgb(150, 150, 150))),
             Span::styled("○◉ ", Style::default().fg(Color::Rgb(100, 200, 255))),
             Span::raw("Read │ "),
@@ -613,17 +568,6 @@ impl MemoryCastle {
             Span::raw("Trails │ "),
             Span::styled("⚡※☼♦◊ ", Style::default().fg(Color::Rgb(180, 150, 200))),
             Span::raw("Glyphs"),
-        ];
-
-        // Calculate current width (excluding initial padding) and add right padding
-        let max_width = self.width.min(120);
-        let content_width = max_width.saturating_sub(2);  // Account for left padding
-        let current_width = Self::calculate_span_width(&spans) - 2;  // Subtract the initial "  "
-        if current_width < content_width {
-            let padding = " ".repeat(content_width - current_width);
-            spans.push(Span::raw(padding));
-        }
-
-        Line::from(spans)
+        ])
     }
 }
